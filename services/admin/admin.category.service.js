@@ -1,48 +1,52 @@
-// src/services/admin/admin.category.service.js
-const CategoryModel = require("../../models/category.model");
+const { getPool } = require("../../config/db");
 
-class AdminCategoryService {
+class CategoryModel {
   // 🔹 Lấy tất cả danh mục
   static async getAll() {
-    return await CategoryModel.getAll();
+    const pool = await getPool();
+    const result = await pool.request().query(`
+      SELECT Id AS id, Name AS name
+      FROM Categories
+      ORDER BY Name ASC
+    `);
+    return result.recordset;
   }
 
-  // 🔹 Lấy danh mục theo Id
+  // 🔹 Lấy theo ID
   static async getById(id) {
-    const category = await CategoryModel.getById(id);
-    if (!category) throw new Error("Không tìm thấy danh mục");
-    return category;
+    const pool = await getPool();
+    const result = await pool.request()
+      .input("Id", id)
+      .query("SELECT Id AS id, Name AS name FROM Categories WHERE Id=@Id");
+    return result.recordset[0];
   }
 
   // 🔹 Tạo danh mục mới
   static async create(name) {
-    if (!name || !name.trim()) throw new Error("Tên danh mục không được để trống");
-    const exists = await CategoryModel.getAll();
-    const dup = exists.find((c) => c.Name.toLowerCase() === name.trim().toLowerCase());
-    if (dup) throw new Error("Danh mục đã tồn tại");
-
-    const category = await CategoryModel.create(name.trim());
-    return { message: "✅ Tạo danh mục thành công", category };
+    const pool = await getPool();
+    await pool.request()
+      .input("Name", name)
+      .query("INSERT INTO Categories (Name) VALUES (@Name)");
+    return { id: null, name };
   }
 
   // 🔹 Cập nhật danh mục
   static async update(id, name) {
-    if (!name || !name.trim()) throw new Error("Tên danh mục không được để trống");
-    const existing = await CategoryModel.getById(id);
-    if (!existing) throw new Error("Không tìm thấy danh mục để cập nhật");
-
-    const updated = await CategoryModel.update(id, name.trim());
-    return { message: "✅ Cập nhật thành công", updated };
+    const pool = await getPool();
+    await pool.request()
+      .input("Id", id)
+      .input("Name", name)
+      .query("UPDATE Categories SET Name=@Name WHERE Id=@Id");
+    return { id, name };
   }
 
   // 🔹 Xóa danh mục
   static async delete(id) {
-    const found = await CategoryModel.getById(id);
-    if (!found) throw new Error("Không tìm thấy danh mục để xóa");
-
-    await CategoryModel.delete(id);
-    return { message: "✅ Đã xóa danh mục" };
+    const pool = await getPool();
+    await pool.request()
+      .input("Id", id)
+      .query("DELETE FROM Categories WHERE Id=@Id");
   }
 }
 
-module.exports = AdminCategoryService;
+module.exports = CategoryModel;

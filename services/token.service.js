@@ -5,6 +5,7 @@
 // ✅ Bảo đảm payload chứa userId, email, role
 // ✅ Lưu refresh token vào DB (7 ngày)
 // =============================================================
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "2h";
 
 require("dotenv").config();
 const jwt = require("jsonwebtoken");
@@ -19,13 +20,17 @@ class TokenService {
   // -----------------------------------------------------
   // 🧠 Payload phải chứa userId để middleware nhận dạng
   // =====================================================
+
   static async signAccessToken({ userId, email, role }) {
     if (!userId) throw new Error("Missing userId in payload");
     const payload = { userId, email, role };
 
-    const token = jwt.sign(payload, JWT_SECRET, { expiresIn: "15m" });
+    const token = jwt.sign(payload, JWT_SECRET, {
+      expiresIn: JWT_EXPIRES_IN,
+    });
     return token;
   }
+
 
   // =====================================================
   // 2️⃣ TẠO REFRESH TOKEN & LƯU VÀO DB

@@ -1,18 +1,23 @@
 const AdminDashboardService = require("../../services/admin/admin.dashboard.service");
 
 class AdminDashboardController {
-  // ✅ Lấy thống kê tổng quan
   static async getStats(req, res) {
     try {
       const stats = await AdminDashboardService.getStats();
+      const chartData = await AdminDashboardService.getRevenueChart();
+      const topProducts = await AdminDashboardService.getTopProducts();
+
       res.json({
-        success: true,
-        data: stats
+        ok: true,
+        stats,
+        chartData,
+        topProducts,
       });
     } catch (err) {
+      console.error("❌ Lỗi Controller:", err);
       res.status(500).json({
-        success: false,
-        error: err.message || "Lỗi khi lấy thống kê tổng quan"
+        ok: false,
+        error: err.message || "Lỗi khi lấy dữ liệu dashboard",
       });
     }
   }

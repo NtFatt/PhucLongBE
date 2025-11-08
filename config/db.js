@@ -3,7 +3,7 @@
 // -------------------------------------------------------------
 // ✅ Hỗ trợ cả instance (SQLEXPRESS) lẫn cổng (1433)
 // ✅ Tự động reconnect khi lỗi
-// ✅ Hoàn toàn tương thích Node.js 22 + mssql@11
+// ✅ Chuẩn hóa cho Node.js 22 + mssql@11
 // =============================================================
 
 require("dotenv").config();
@@ -19,13 +19,13 @@ const DB_PASSWORD = process.env.DB_PASSWORD?.trim() || "phuclong_pass";
 const DB_PORT = process.env.DB_PORT ? parseInt(process.env.DB_PORT, 10) : 1433;
 const DB_INSTANCE = process.env.DB_INSTANCE?.trim() || null;
 
-// 🔧 Chuẩn hóa server name
+// Chuẩn hóa tên server
 if (DB_SERVER === "(local)" || DB_SERVER.toLowerCase() === "local") {
   DB_SERVER = "localhost";
 }
 
 // =============================================================
-// ⚙️ Build config động (instance / port)
+// ⚙️ Build Config động (instance / port)
 // =============================================================
 const config = {
   server: DB_SERVER,
@@ -34,7 +34,7 @@ const config = {
   password: DB_PASSWORD,
   port: DB_PORT,
   options: {
-    encrypt: false, // ❌ local false, ✅ Azure true
+    encrypt: false, // Azure dùng true
     trustServerCertificate: true,
     enableArithAbort: true,
   },
@@ -67,23 +67,24 @@ console.log("🛠️ SQL Config:", {
 });
 
 // =============================================================
-// 🔁 Singleton Connection Pool (chuẩn hóa theo mssql@11)
+// 🔁 Singleton Connection Pool
+// -------------------------------------------------------------
+// - Đảm bảo chỉ có 1 pool hoạt động
+// - Nếu mất kết nối, sẽ reset và tự reconnect
 // =============================================================
-let pool;
-let poolConnecting = false;
+let pool = null;
+let connecting = false;
 
 async function getPool() {
   try {
-    // Nếu đã có pool đang hoạt động → trả về
     if (pool && pool.connected) return pool;
 
-    // Nếu đang trong quá trình connect → đợi 500ms rồi thử lại
-    if (poolConnecting) {
-      await new Promise((res) => setTimeout(res, 500));
+    if (connecting) {
+      await new Promise((res) => setTimeout(res, 300));
       return getPool();
     }
 
-    poolConnecting = true;
+    connecting = true;
     pool = new sql.ConnectionPool(config);
 
     pool.on("error", (err) => {
@@ -92,35 +93,35 @@ async function getPool() {
     });
 
     await pool.connect();
-    poolConnecting = false;
+    connecting = false;
 
-    console.log("✅ SQL Server: kết nối thành công!");
+    console.log("✅ SQL Server: Kết nối thành công!");
     return pool;
   } catch (err) {
-    poolConnecting = false;
+    connecting = false;
     console.error("❌ Lỗi kết nối SQL Server:", err.message);
-    console.log("🔁 Sẽ thử kết nối lại sau 5 giây...");
+    console.log("🔁 Sẽ thử lại sau 5 giây...");
     setTimeout(() => (pool = null), 5000);
     throw err;
   }
 }
 
 // =============================================================
-// 🧠 Health Check tiện ích
+// 🧠 Health Check (Tùy chọn)
 // =============================================================
 async function testConnection() {
   try {
     const pool = await getPool();
-    const result = await pool.request().query("SELECT GETDATE() AS ServerTime");
-    console.log("🧠 SQL Health Check:", result.recordset[0]);
+    const rs = await pool.request().query("SELECT GETDATE() AS ServerTime");
+    console.log("🧠 SQL Health Check:", rs.recordset[0]);
   } catch (err) {
     console.error("❌ SQL Health Check Failed:", err.message);
   }
 }
 
-// testConnection();
+// testConnection(); // bật tạm để kiểm thử
 
 // =============================================================
-// 📤 Export module
+// 📤 Export
 // =============================================================
 module.exports = { sql, getPool };

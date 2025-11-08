@@ -4,7 +4,6 @@ const AdminDashboardController = require("../../controllers/admin/admin.dashboar
 
 const router = express.Router();
 
-// ✅ Lấy thống kê tổng quan
-router.get("/stats", authenticateJWT, authorizeAdmin, AdminDashboardController.getStats);
+router.get("/dashboard", authenticateJWT, authorizeAdmin, AdminDashboardController.getStats);
 
 module.exports = router;

@@ -17,6 +17,7 @@ const compression = require("compression");
 const logger = require("./utils/logger");
 const { authenticateJWT, authorizeAdmin } = require("./middleware/auth.middleware");
 const { apiLimiter, loginLimiter } = require("./middleware/rateLimiter");
+const { getPool } = require("./config/db");
 
 // ✅ Cron job dọn refresh token hết hạn
 require("./jobs/cleanupTokens");
@@ -33,11 +34,16 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.set("trust proxy", 1);
 
-app.use(
-  helmet({
-    crossOriginResourcePolicy: { policy: "cross-origin" },
-  })
-);
+try {
+  app.use(
+    helmet({
+      crossOriginResourcePolicy: { policy: "cross-origin" },
+    })
+  );
+} catch (err) {
+  console.warn("⚠️ Helmet init warning:", err.message);
+}
+
 app.use(compression());
 
 // ======================================================
@@ -48,17 +54,21 @@ app.use(
     origin: (origin, cb) => {
       const allowed = [
         process.env.FRONTEND_URL || "http://localhost:5173",
-        "http://localhost:5174",
+        process.env.ADMIN_URL || "http://localhost:5174",
         "http://localhost:3000",
         "http://localhost:3001",
         "https://phuclong.vn",
       ];
-      if (!origin || allowed.includes(origin)) return cb(null, true);
-      return cb(new Error("❌ Not allowed by CORS"));
+      if (!origin || allowed.includes(origin)) {
+        cb(null, true);
+      } else {
+        console.warn("🚫 Blocked by CORS:", origin);
+        cb(new Error("❌ Not allowed by CORS"));
+      }
     },
+    credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
-    credentials: true,
   })
 );
 
@@ -75,17 +85,17 @@ app.get("/", (req, res) => {
 app.use("/api", apiLimiter);
 
 // ======================================================
-// 🔓 PUBLIC ROUTES (Không yêu cầu đăng nhập)
+// 🔓 PUBLIC ROUTES
 // ======================================================
 app.use("/api/auth", loginLimiter, require("./routes/auth.routes"));
 app.use("/api/products", require("./routes/product.routes"));
-app.use("/api/categories", require("./routes/category.routes"));
+app.use("/api/admin/categories", require("./routes/admin/admin.category.routes"));
 app.use("/api/payment", require("./routes/payment.routes"));
 app.use("/api/stores", require("./routes/store.routes"));
 app.use("/api/vouchers", require("./routes/voucher.routes"));
 
 // ======================================================
-// 🔐 USER ROUTES (Yêu cầu đăng nhập)
+// 🔐 USER ROUTES
 // ======================================================
 app.use("/api/cart", authenticateJWT, require("./routes/cart.routes"));
 app.use("/api/orders", authenticateJWT, require("./routes/order.routes"));
@@ -94,14 +104,25 @@ app.use("/api/history", authenticateJWT, require("./routes/orderHistory.routes")
 app.use("/api/reviews", authenticateJWT, require("./routes/review.routes"));
 
 // ======================================================
-// 🧑‍💼 ADMIN ROUTES (Yêu cầu quyền admin)
+// 🧑‍💼 ADMIN ROUTES
 // ======================================================
+app.use("/api/admin/auth", require("./routes/admin/admin.auth.routes"));
+
+// ✅ Giữ một bản duy nhất cho dashboard
 app.use(
   "/api/admin/dashboard",
   authenticateJWT,
   authorizeAdmin,
   require("./routes/admin/admin.dashboard.routes")
 );
+
+app.use(
+  "/api/admin/products",
+  authenticateJWT,
+  authorizeAdmin,
+  require("./routes/admin/admin.product.routes")
+);
+
 app.use(
   "/api/admin/users",
   authenticateJWT,
@@ -121,10 +142,10 @@ app.use(
   require("./routes/admin/admin.order.routes")
 );
 app.use(
-  "/api/admin/products",
+  "/api/admin/categories",
   authenticateJWT,
   authorizeAdmin,
-  require("./routes/admin/admin.product.routes")
+  require("./routes/admin/admin.category.routes")
 );
 app.use(
   "/api/admin/loyalty",
@@ -156,18 +177,10 @@ app.use(
   authorizeAdmin,
   require("./routes/admin/admin.transaction.routes")
 );
-app.use(
-  "/api/admin/categories",
-  authenticateJWT,
-  authorizeAdmin,
-  require("./routes/admin/admin.category.routes")
-);
 
 // ======================================================
 // 🧠 DEBUG ENDPOINT (Kiểm tra kết nối SQL)
 // ======================================================
-const { getPool } = require("./config/db");
-
 app.get("/__debug/db", async (req, res) => {
   try {
     const pool = await getPool();
@@ -189,9 +202,13 @@ app.get("/__debug/db", async (req, res) => {
 // ⚠️ GLOBAL ERROR HANDLER
 // ======================================================
 app.use((err, req, res, next) => {
-  logger.error(err);
+  try {
+    logger.error(err);
+  } catch (_) {
+    console.error("Logger failed:", err.message);
+  }
 
-  if (err.message.includes("Not allowed by CORS")) {
+  if (err?.message?.includes?.("Not allowed by CORS")) {
     return res.status(403).json({
       success: false,
       error: { code: "CORS_ERROR", message: err.message },
@@ -218,6 +235,6 @@ app.listen(PORT, () => {
 });
 
 // ======================================================
-// 🧩 EXPORT APP (cho test hoặc tools khác dùng)
+// 🧩 EXPORT APP
 // ======================================================
 module.exports = app;
