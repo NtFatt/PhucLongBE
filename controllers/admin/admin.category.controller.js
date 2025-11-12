@@ -1,4 +1,3 @@
-// src/controllers/admin/admin.category.controller.js
 const AdminCategoryService = require("../../services/admin/admin.category.service");
 
 class AdminCategoryController {
@@ -6,21 +5,21 @@ class AdminCategoryController {
   static async getAll(req, res) {
     try {
       const data = await AdminCategoryService.getAll();
-      res.json({ ok: true, data }); // ✅ FE sẽ đọc được res.data.data
+      res.json({ ok: true, data }); // FE chỉ cần đọc data
     } catch (err) {
       console.error("❌ Lỗi khi lấy danh mục:", err);
       res.status(500).json({ ok: false, error: err.message });
     }
   }
 
-  // 🔍 Lấy danh mục theo ID
-  static async getById(req, res) {
+  // 🔍 Lấy danh mục theo Name
+  static async getByName(req, res) {
     try {
-      const data = await AdminCategoryService.getById(req.params.id);
+      const data = await AdminCategoryService.getByName(req.params.name);
       if (!data) return res.status(404).json({ ok: false, error: "Không tìm thấy danh mục" });
       res.json({ ok: true, data });
     } catch (err) {
-      console.error("❌ Lỗi khi lấy danh mục theo ID:", err);
+      console.error("❌ Lỗi khi lấy danh mục:", err);
       res.status(500).json({ ok: false, error: err.message });
     }
   }
@@ -31,7 +30,7 @@ class AdminCategoryController {
       const { Name } = req.body;
       if (!Name?.trim()) return res.status(400).json({ ok: false, error: "Thiếu tên danh mục" });
 
-      const data = await AdminCategoryService.create(Name);
+      const data = await AdminCategoryService.create(Name.trim());
       res.status(201).json({ ok: true, data });
     } catch (err) {
       console.error("❌ Lỗi khi thêm danh mục:", err);
@@ -39,13 +38,14 @@ class AdminCategoryController {
     }
   }
 
-  // ✏️ Cập nhật danh mục
+  // ✏️ Cập nhật tên danh mục
   static async update(req, res) {
     try {
-      const { Name } = req.body;
-      if (!Name?.trim()) return res.status(400).json({ ok: false, error: "Thiếu tên danh mục" });
+      const oldName = req.params.name;
+      const { Name: newName } = req.body;
+      if (!newName?.trim()) return res.status(400).json({ ok: false, error: "Thiếu tên mới" });
 
-      const data = await AdminCategoryService.update(req.params.id, Name);
+      const data = await AdminCategoryService.update(oldName, newName.trim());
       res.json({ ok: true, data });
     } catch (err) {
       console.error("❌ Lỗi khi cập nhật danh mục:", err);
@@ -53,10 +53,11 @@ class AdminCategoryController {
     }
   }
 
-  // 🗑️ Xóa danh mục
+  // 🗑️ Xóa danh mục theo Name
   static async delete(req, res) {
     try {
-      const data = await AdminCategoryService.delete(req.params.id);
+      const name = req.params.name;
+      const data = await AdminCategoryService.delete(name);
       res.json({ ok: true, data });
     } catch (err) {
       console.error("❌ Lỗi khi xóa danh mục:", err);

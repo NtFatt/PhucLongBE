@@ -51,7 +51,18 @@ class AdminInventoryService {
       ORDER BY LastUpdated DESC
     `);
 
-    return result.recordset;
+    // Chuẩn hóa dữ liệu để FE đọc đúng key (category, unit, quantity...)
+    return result.recordset.map((i) => ({
+      id: i.Id,
+      name: i.Name,
+      category: i.Category,     // ✅ FE dùng để lọc
+      quantity: i.Quantity,
+      unit: i.Unit,
+      minStock: i.MinStock,
+      price: i.Price,
+      supplier: i.Supplier,
+      lastUpdated: i.LastUpdated,
+    }));
   }
 
   // ======================================================

@@ -5,19 +5,26 @@ class CategoryModel {
   // 🔹 Lấy tất cả danh mục
   static async getAll() {
     const pool = await getPool();
-    const res = await pool.request().query("SELECT * FROM Categories ORDER BY Name ASC");
-    return res.recordset;  // ✅ trả về tất cả danh mục
+    const res = await pool.request().query(`
+      SELECT Name
+      FROM Categories
+      ORDER BY Name ASC
+    `);
+    return res.recordset;
   }
 
-  // 🔹 Lấy danh mục theo ID
-  static async getById(id) {
+  // 🔹 Lấy danh mục theo tên
+  static async getByName(name) {
     const pool = await getPool();
     const res = await pool
       .request()
-      .input("Id", sql.Int, id)
-      .query("SELECT * FROM Categories WHERE Id=@Id");
-
-    return res.recordset[0] || null;  // ✅ Trả về bản ghi nếu tồn tại, không có trả null
+      .input("Name", sql.NVarChar(100), name)
+      .query(`
+        SELECT Name 
+        FROM Categories
+        WHERE Name = @Name
+      `);
+    return res.recordset[0] || null;
   }
 
   // 🔹 Tạo danh mục mới
@@ -25,43 +32,39 @@ class CategoryModel {
     const pool = await getPool();
     const res = await pool
       .request()
-      .input("Name", sql.NVarChar, name)
+      .input("Name", sql.NVarChar(100), name)
       .query(`
         INSERT INTO Categories (Name)
-        OUTPUT INSERTED.*
+        OUTPUT INSERTED.Name
         VALUES (@Name)
       `);
-    
-    return res.recordset[0];  // ✅ Trả về bản ghi vừa được tạo, bao gồm cả ID
+    return res.recordset[0];
   }
 
-  // 🔹 Cập nhật danh mục
-  static async update(id, name) {
+  // 🔹 Cập nhật tên danh mục (đổi tên)
+  static async update(oldName, newName) {
     const pool = await getPool();
     const res = await pool
       .request()
-      .input("Id", sql.Int, id)
-      .input("Name", sql.NVarChar, name)
+      .input("OldName", sql.NVarChar(100), oldName)
+      .input("NewName", sql.NVarChar(100), newName)
       .query(`
         UPDATE Categories
-        SET Name=@Name
-        OUTPUT INSERTED.*
-        WHERE Id=@Id
+        SET Name = @NewName
+        OUTPUT INSERTED.Name
+        WHERE Name = @OldName
       `);
-    
-    return res.recordset[0];  // ✅ Trả về bản ghi cập nhật
+    return res.recordset[0];
   }
 
-  // 🔹 Xóa danh mục
-  static async delete(id) {
+  // 🔹 Xóa danh mục theo tên
+  static async delete(name) {
     const pool = await getPool();
-    const res = await pool
+    await pool
       .request()
-      .input("Id", sql.Int, id)
-      .query("DELETE FROM Categories WHERE Id=@Id");
-
-    // ✅ Trả về thông tin đã xóa (có thể sử dụng hoặc bỏ tùy nhu cầu)
-    return { ok: true, id };  
+      .input("Name", sql.NVarChar(100), name)
+      .query("DELETE FROM Categories WHERE Name = @Name");
+    return { message: `Đã xóa danh mục '${name}'` };
   }
 }
 
