@@ -2,34 +2,40 @@ const { sql, getPool } = require("../../config/db");
 
 class AdminOrderService {
   // ✅ Lấy toàn bộ đơn hàng kèm danh sách sản phẩm
-  static async getAll() {
-    try {
-      const pool = await getPool();
+static async getAll() {
+  try {
+    const pool = await getPool();
 
-      const res = await pool.request().query(`
-        SELECT 
-          o.Id, o.UserId, u.Name AS CustomerName, u.Phone, o.Total, o.Status, o.CreatedAt,
-          STRING_AGG(
-            CASE 
-              WHEN p.Name IS NOT NULL THEN CONCAT(p.Name, ' (x', oi.Quantity, ')')
-              ELSE '(Sản phẩm không tồn tại)'
-            END, ', '
-          ) AS ProductList
-        FROM Orders o
-        JOIN Users u ON o.UserId = u.Id
-        LEFT JOIN OrderItems oi ON o.Id = oi.OrderId
-        LEFT JOIN Products p ON oi.ProductId = p.Id
-        GROUP BY o.Id, o.UserId, u.Name, u.Phone, o.Total, o.Status, o.CreatedAt
-        ORDER BY o.CreatedAt DESC
-      `);
+    const res = await pool.request().query(`
+      SELECT 
+  o.Id,
+  o.Total,
+  o.PaymentMethod,
+  o.Status,
+  o.CreatedAt,
+  u.Name AS CustomerName,
+  u.Phone,
+  STRING_AGG(
+    CASE 
+      WHEN p.Name IS NOT NULL THEN CONCAT(p.Name, ' (x', oi.Quantity, ')')
+      ELSE '(Sản phẩm không tồn tại)'
+    END, ', '
+  ) AS ProductList
+FROM Orders o
+JOIN Users u ON o.UserId = u.Id
+LEFT JOIN OrderItems oi ON o.Id = oi.OrderId
+LEFT JOIN Products p ON oi.ProductId = p.Id
+GROUP BY o.Id, o.Total, o.PaymentMethod, o.Status, o.CreatedAt, u.Name, u.Phone
+ORDER BY o.CreatedAt DESC
+    `);
 
-      console.log("📦 Orders fetched:", res.recordset.length, "đơn hàng");
-      return res.recordset;
-    } catch (err) {
-      console.error("❌ Lỗi khi lấy danh sách đơn hàng:", err);
-      return [];
-    }
+    console.log("📦 Orders fetched:", res.recordset.length, "đơn hàng");
+    return res.recordset;
+  } catch (err) {
+    console.error("❌ Lỗi khi lấy danh sách đơn hàng:", err);
+    return [];
   }
+}
 
   // ✅ Cập nhật trạng thái đơn hàng
   static async updateStatus(orderId, status) {

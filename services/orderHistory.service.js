@@ -46,31 +46,35 @@ class OrderHistoryService {
   // ==========================================================
   // 🟢 Danh sách đơn hàng (của user)
   // ==========================================================
-  static async getByUser(userId) {
-    const pool = await getPool();
-    const result = await pool.request()
-      .input("UserId", sql.Int, userId)
-      .query(`
-        SELECT 
-          o.Id AS OrderId,
-          o.CreatedAt,
-          o.Status,
-          o.Total,
-          o.PaymentStatus,
-          o.PaymentMethod,
-          s.Name AS StoreName,
-          COUNT(oi.Id) AS ItemCount
-        FROM Orders o
-        LEFT JOIN Stores s ON o.StoreId = s.Id
-        LEFT JOIN OrderItems oi ON o.Id = oi.OrderId
-        WHERE o.UserId = @UserId
-        GROUP BY 
-          o.Id, o.CreatedAt, o.Status, o.Total, 
-          o.PaymentStatus, o.PaymentMethod, s.Name
-        ORDER BY o.CreatedAt DESC
-      `);
-    return result.recordset;
-  }
+  static async getAll() {
+  const pool = await getPool();
+  const result = await pool.request().query(`
+    SELECT 
+      o.Id AS OrderId,
+      u.Name AS UserName,
+      u.Email,
+      o.Status,
+      o.Total,
+      o.PaymentStatus,
+      o.PaymentMethod,
+      o.CreatedAt,
+      STRING_AGG(
+        CASE 
+          WHEN p.Name IS NOT NULL THEN CONCAT(p.Name, ' (x', oi.Quantity, ')')
+          ELSE '(Không rõ sản phẩm)'
+        END, ', '
+      ) AS ProductList
+    FROM Orders o
+    JOIN Users u ON o.UserId = u.Id
+    LEFT JOIN OrderItems oi ON o.Id = oi.OrderId
+    LEFT JOIN Products p ON oi.ProductId = p.Id
+    GROUP BY 
+      o.Id, u.Name, u.Email, o.Status, o.Total, 
+      o.PaymentStatus, o.PaymentMethod, o.CreatedAt
+    ORDER BY o.CreatedAt DESC
+  `);
+  return result.recordset;
+}
 
   // ==========================================================
   // 🟢 Chi tiết 1 đơn hàng (bao gồm items & giao dịch)
