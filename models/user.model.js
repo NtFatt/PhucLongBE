@@ -19,21 +19,32 @@ const UserModel = {
     return res.recordset[0] || null;
   },
 
-  async create({ Name, Email, Phone, PasswordHash, VerifyToken, VerifyTokenExpires }) {
-    const pool = await getPool();
-    await pool.request()
-      .input("Name", sql.NVarChar, Name)
-      .input("Email", sql.NVarChar, Email)
-      .input("Phone", sql.NVarChar, Phone)
-      .input("PasswordHash", sql.NVarChar, PasswordHash)
-      .input("IsVerified", sql.Bit, 0)
-      .input("VerifyToken", sql.NVarChar, VerifyToken)
-      .input("VerifyTokenExpires", sql.DateTime, VerifyTokenExpires)
-      .query(`
-        INSERT INTO Users (Name, Email, Phone, PasswordHash, IsVerified, VerifyToken, VerifyTokenExpires, Role)
-        VALUES (@Name, @Email, @Phone, @PasswordHash, @IsVerified, @VerifyToken, @VerifyTokenExpires, 'customer')
-      `);
-  },
+async create({
+  Name,
+  Email,
+  Phone,
+  PasswordHash,
+  VerifyToken,
+  VerifyTokenExpires,
+  IsVerified = 0,
+  Role = "customer",
+}) {
+  const pool = await getPool();
+  await pool.request()
+    .input("Name", sql.NVarChar, Name)
+    .input("Email", sql.NVarChar, Email)
+    .input("Phone", sql.NVarChar, Phone)
+    .input("PasswordHash", sql.NVarChar, PasswordHash)
+    .input("IsVerified", sql.Bit, IsVerified)
+    .input("VerifyToken", sql.NVarChar, VerifyToken)
+    .input("VerifyTokenExpires", sql.DateTime, VerifyTokenExpires)
+    .input("Role", sql.NVarChar, Role)
+    .query(`
+      INSERT INTO Users (Name, Email, Phone, PasswordHash, IsVerified, VerifyToken, VerifyTokenExpires, Role)
+      VALUES (@Name, @Email, @Phone, @PasswordHash, @IsVerified, @VerifyToken, @VerifyTokenExpires, @Role)
+    `);
+},
+
 
   async verifyAccount(token) {
     const pool = await getPool();

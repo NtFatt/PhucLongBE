@@ -1,4 +1,4 @@
-const { sql, poolPromise } = require("../../config/db");
+const { sql, getPool } = require("../../config/db");
 
 class AdminUserService {
   static async getAll() {

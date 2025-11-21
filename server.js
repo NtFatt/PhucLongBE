@@ -55,6 +55,8 @@ app.use(
       const allowed = [
         process.env.FRONTEND_URL || "http://localhost:5173",
         process.env.ADMIN_URL || "http://localhost:5174",
+        "http://localhost:5175",
+
         "http://localhost:3000",
         "http://localhost:3001",
         "https://phuclong.vn",
@@ -89,7 +91,6 @@ app.use("/api", apiLimiter);
 // ======================================================
 app.use("/api/auth", loginLimiter, require("./routes/auth.routes"));
 app.use("/api/products", require("./routes/product.routes"));
-app.use("/api/admin/categories", require("./routes/admin/admin.category.routes"));
 app.use("/api/payment", require("./routes/payment.routes"));
 app.use("/api/stores", require("./routes/store.routes"));
 app.use("/api/vouchers", require("./routes/voucher.routes"));
@@ -109,6 +110,14 @@ app.use("/api/toppings", require("./routes/topping.routes"));
 // 🧑‍💼 ADMIN ROUTES
 // ======================================================
 app.use("/api/admin/auth", require("./routes/admin/admin.auth.routes"));
+
+// =====================
+// POS ROUTES
+// =====================
+app.use("/api/pos/orders", require("./routes/pos/pos.order.routes"));
+// Employee Authentication
+app.use("/api/employee/auth", require("./routes/admin/admin.employeeAuth.routes"));
+
 
 // ✅ Giữ một bản duy nhất cho dashboard
 app.use(
@@ -173,12 +182,6 @@ app.use(
   authorizeAdmin,
   require("./routes/admin/admin.review.routes")
 );
-app.use(
-  "/api/admin/reviews",
-  authenticateJWT,
-  authorizeAdmin,
-  require("./routes/admin/admin.review.routes")
-);
 // ✅ Toppings management
 app.use(
   "/api/admin/transactions",
@@ -201,6 +204,24 @@ app.use(
   authorizeAdmin,
   require("./routes/admin/order.workflow.routes")
 );
+
+// ✅ Employee management
+app.use(
+  "/api/admin/employees",
+  authenticateJWT,
+  authorizeAdmin,
+  require("./routes/admin/admin.employee.routes")
+);
+
+// customer management
+app.use(
+  "/api/admin/customers",
+  authenticateJWT,
+  authorizeAdmin,
+  require("./routes/admin/admin.customer.routes")
+);
+
+
 // ======================================================
 // 🧠 DEBUG ENDPOINT (Kiểm tra kết nối SQL)
 // ======================================================

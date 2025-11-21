@@ -1,92 +1,116 @@
-const bcrypt = require("bcrypt");
-const { sql, poolPromise } = require("../../config/db");
+const { sql, getPool } = require("../../config/db");
+const bcrypt = require("bcryptjs");
 
 class AdminEmployeeService {
+  // ============================
+  // 1) Get toàn bộ nhân viên
+  // ============================
   static async getAll() {
     const pool = await getPool();
-    const res = await pool.request().query(`
-      SELECT e.Id, u.Name, u.Email, u.Phone, e.Position, e.Salary, e.Status, e.HireDate
-      FROM Employees e
-      JOIN Users u ON e.UserId = u.Id
-      WHERE u.Role = 'employee'
+    const rs = await pool.request().query(`
+      SELECT 
+        Id, Name, Email, Phone, Role, IsActive, CreatedAt
+      FROM Employees
+      ORDER BY CreatedAt DESC
     `);
-    return res.recordset;
+    return rs.recordset;
   }
 
-  static async getById(id) {
+  // ============================
+  // 2) Tạo nhân viên
+  // ============================
+  static async create(data) {
+    const { name, email, phone, password, role } = data;
+
+    if (!password) throw new Error("Mật khẩu không được bỏ trống");
+
+    const hashed = await bcrypt.hash(password, 10);
+
     const pool = await getPool();
-    const res = await pool.request()
-      .input("Id", sql.Int, id)
-      .query(`
-        SELECT e.Id, u.Name, u.Email, u.Phone, e.Position, e.Salary, e.Status, e.HireDate
-        FROM Employees e
-        JOIN Users u ON e.UserId = u.Id
-        WHERE e.Id = @Id
-      `);
-    if (!res.recordset.length) throw new Error("Không tìm thấy nhân viên");
-    return res.recordset[0];
-  }
-
-  static async create({ Name, Email, Phone, Password, Position, Salary }) {
-    const pool = await getPool();
-
-    const exists = await pool.request()
-      .input("Email", sql.NVarChar, Email)
-      .query("SELECT Id FROM Users WHERE Email=@Email");
-    if (exists.recordset.length) throw new Error("Email đã tồn tại");
-
-    const hash = await bcrypt.hash(Password, 10);
-    const userRes = await pool.request()
-      .input("Name", sql.NVarChar, Name)
-      .input("Email", sql.NVarChar, Email)
-      .input("Phone", sql.NVarChar, Phone)
-      .input("PasswordHash", sql.NVarChar, hash)
-      .query(`
-        INSERT INTO Users (Name, Email, Phone, PasswordHash, Role)
-        OUTPUT INSERTED.Id
-        VALUES (@Name, @Email, @Phone, @PasswordHash, 'employee')
-      `);
-    const userId = userRes.recordset[0].Id;
-
     await pool.request()
-      .input("UserId", sql.Int, userId)
-      .input("Position", sql.NVarChar, Position)
-      .input("Salary", sql.Decimal(18, 2), Salary)
+      .input("Name", sql.NVarChar, name)
+      .input("Email", sql.NVarChar, email)
+      .input("Phone", sql.NVarChar, phone)
+      .input("PasswordHash", sql.NVarChar, hashed)
+      .input("Role", sql.NVarChar, role)
       .query(`
-        INSERT INTO Employees (UserId, Position, Salary)
-        VALUES (@UserId, @Position, @Salary)
+        INSERT INTO Employees (Name, Email, Phone, PasswordHash, Role, IsActive, CreatedAt)
+        VALUES (@Name, @Email, @Phone, @PasswordHash, @Role, 1, GETDATE())
       `);
-    return { message: "✅ Đã thêm nhân viên mới" };
+
+    return { message: "Thêm nhân viên thành công" };
   }
 
-  static async update(id, { Name, Phone, Position, Salary, Status }) {
+  // ============================
+  // 3) Cập nhật nhân viên
+  // ============================
+  static async update(id, data) {
+    const { name, email, phone, role } = data;
+
     const pool = await getPool();
     await pool.request()
       .input("Id", sql.Int, id)
-      .input("Name", sql.NVarChar, Name)
-      .input("Phone", sql.NVarChar, Phone)
-      .input("Position", sql.NVarChar, Position)
-      .input("Salary", sql.Decimal(18, 2), Salary)
-      .input("Status", sql.NVarChar, Status)
+      .input("Name", sql.NVarChar, name)
+      .input("Email", sql.NVarChar, email)
+      .input("Phone", sql.NVarChar, phone)
+      .input("Role", sql.NVarChar, role)
       .query(`
-        UPDATE u
-        SET u.Name=@Name, u.Phone=@Phone
-        FROM Users u
-        JOIN Employees e ON e.UserId = u.Id
-        WHERE e.Id=@Id;
-
         UPDATE Employees
-        SET Position=@Position, Salary=@Salary, Status=@Status
-        WHERE Id=@Id;
+        SET Name=@Name, Email=@Email, Phone=@Phone, Role=@Role
+        WHERE Id=@Id
       `);
-    return { message: "✅ Cập nhật thông tin nhân viên thành công" };
+
+    return { message: "Cập nhật nhân viên thành công" };
   }
 
+  // ============================
+  // 4) Cập nhật mật khẩu
+  // ============================
+  static async updatePassword(id, password) {
+    const hashed = await bcrypt.hash(password, 10);
+
+    const pool = await getPool();
+    await pool.request()
+      .input("Id", sql.Int, id)
+      .input("PasswordHash", sql.NVarChar, hashed)
+      .query(`
+        UPDATE Employees
+        SET PasswordHash=@PasswordHash
+        WHERE Id=@Id
+      `);
+
+    return { message: "Đổi mật khẩu thành công" };
+  }
+
+  // ============================
+  // 5) Ẩn / khóa account
+  // ============================
+  static async updateStatus(id, isActive) {
+    const pool = await getPool();
+    await pool.request()
+      .input("Id", sql.Int, id)
+      .input("IsActive", sql.Bit, isActive)
+      .query(`
+        UPDATE Employees
+        SET IsActive=@IsActive
+        WHERE Id=@Id
+      `);
+
+    return { message: "Cập nhật trạng thái thành công" };
+  }
+
+  // ============================
+  // 6) Xoá nhân viên
+  // ============================
   static async delete(id) {
     const pool = await getPool();
-    await pool.request().input("Id", sql.Int, id)
-      .query("DELETE FROM Employees WHERE Id=@Id");
-    return { message: "🗑️ Đã xóa nhân viên" };
+    await pool.request()
+      .input("Id", sql.Int, id)
+      .query(`
+        DELETE FROM Employees WHERE Id=@Id
+      `);
+
+    return { message: "Xoá nhân viên thành công" };
   }
 }
 

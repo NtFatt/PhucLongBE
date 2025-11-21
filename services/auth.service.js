@@ -31,7 +31,8 @@ class AuthService {
       PasswordHash: hash,
       VerifyToken: verifyToken,
       VerifyTokenExpires: expires,
-      IsVerified: 1,
+      IsVerified: 1,          // Auto-verified (tạm)
+      Role: "customer",       // Đăng ký public luôn là khách hàng
     });
 
     const verifyUrl = `${process.env.BACKEND_URL}/api/auth/verify-email?token=${verifyToken}`;
@@ -59,16 +60,23 @@ class AuthService {
   static async login({ Email, Password }) {
     const user = await UserModel.findByEmail(Email);
     if (!user) throw new Error("Email chưa được đăng ký");
-    //if (!user.IsVerified) throw new Error("Tài khoản chưa được kích hoạt");
 
+    // 1️⃣ CHẶN LOGIN KHI TÀI KHOẢN BỊ KHÓA
+    if (user.IsActive === 0 || user.IsActive === false || user.IsActive === null) {
+      throw new Error("Tài khoản của bạn đã bị khóa. Vui lòng liên hệ admin để mở lại.");
+    }
+
+    // 2️⃣ CHECK MẬT KHẨU
     const match = await bcrypt.compare(Password, user.PasswordHash);
     if (!match) throw new Error("Sai mật khẩu");
 
+    // 3️⃣ TẠO TOKEN
     const accessToken = await TokenService.signAccessToken({
       userId: user.Id,
       role: user.Role,
       email: user.Email,
     });
+
     const refreshToken = await TokenService.generateRefreshToken(user.Id);
 
     return {
