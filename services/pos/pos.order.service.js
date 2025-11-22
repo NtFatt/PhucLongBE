@@ -3,41 +3,57 @@ const PosInventoryService = require("./pos.inventory.service");
 
 class PosOrderService {
 
-    // =======================================
-    // 1. CASHIER — LẤY LIST ORDER (pending, waiting)
-    // =======================================
-    static async getCashierOrders(user) {
-        const pool = await getPool();
+// =======================================
+// 1. CASHIER — LẤY LIST ORDER (pending, waiting)
+// =======================================
+static async getCashierOrders(user) {
+    const pool = await getPool();
 
-        // Lấy StoreId của cashier
-        const empRs = await pool.request()
-            .input("UserId", sql.Int, user.id)
-            .query(`
-                SELECT TOP 1 StoreId
-                FROM Employees
-                WHERE UserId = @UserId
-            `);
+    // 1. Lấy danh sách đơn
+    const ordersRs = await pool.request().query(`
+        SELECT 
+            o.Id,
+            o.UserId,
+            o.Total,
+            o.Status,
+            o.PaymentStatus,
+            o.CreatedAt,
+            u.Name AS CustomerName
+        FROM Orders o
+        LEFT JOIN Users u ON o.UserId = u.Id
+        WHERE o.Status IN ('pending', 'waiting')
+        ORDER BY o.CreatedAt DESC
+    `);
 
-        const storeId = empRs.recordset[0]?.StoreId;
-        if (!storeId) throw new Error("Cashier không thuộc chi nhánh nào");
+    const orders = ordersRs.recordset;
 
-        // Lấy danh sách order pending/waiting
-        const rs = await pool.request()
-            .input("StoreId", sql.Int, storeId)
-            .query(`
-                SELECT 
-                    o.Id, o.UserId, o.StoreId,
-                    o.Total, o.Status, o.PaymentStatus,
-                    o.CreatedAt, u.Name AS CustomerName
-                FROM Orders o
-                LEFT JOIN Users u ON o.UserId = u.Id
-                WHERE o.StoreId = @StoreId
-                  AND o.Status IN ('pending', 'waiting')
-                ORDER BY o.CreatedAt DESC
-            `);
+    if (orders.length === 0) return [];
 
-        return rs.recordset;
-    }
+    // 2. Lấy danh sách items của tất cả order
+    const itemsRs = await pool.request().query(`
+        SELECT 
+            oi.OrderId,
+            oi.ProductId,
+            oi.Quantity,
+            oi.Price,
+            p.Name AS ProductName,
+            p.ImageUrl
+        FROM OrderItems oi
+        JOIN Products p ON oi.ProductId = p.Id
+        WHERE oi.OrderId IN (${orders.map(o => o.Id).join(",")})
+    `);
+
+    const items = itemsRs.recordset;
+console.log(">>> ORDER ITEMS:", items);
+
+    // 3. Gắn items vào đúng order
+    const final = orders.map(o => ({
+        ...o,
+        Items: items.filter(i => i.OrderId === o.Id)
+    }));
+
+    return final;
+}
 
     // =======================================
     // 2. CASHIER — Tạo order
@@ -76,7 +92,7 @@ class PosOrderService {
         // Insert Order
         const orderResult = await pool.request()
             .input("UserId", sql.Int, user.id)
-            .input("StoreId", sql.Int, storeId)
+            .input("StoreId", sql.Int, null)
             .input("VoucherCode", sql.NVarChar, voucherCode || null)
             .input("Status", sql.NVarChar, "pending")
             .input("PaymentStatus", sql.NVarChar, "unpaid")
