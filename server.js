@@ -114,7 +114,7 @@ app.use("/api/admin/auth", require("./routes/admin/admin.auth.routes"));
 // =====================
 // POS ROUTES
 // =====================
-app.use("/api/pos/orders", require("./routes/pos/pos.order.routes"));
+app.use("/api/pos", require("./routes/pos/pos.order.routes"));
 // Employee Authentication
 app.use("/api/employee/auth", require("./routes/admin/admin.employeeAuth.routes"));
 

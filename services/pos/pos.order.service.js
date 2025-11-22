@@ -1,10 +1,47 @@
 const { sql, getPool } = require("../../config/db");
-const PosInventoryService = require("./pos.inventory.service"); // 👈 QUAN TRỌNG: thêm dòng này
+const PosInventoryService = require("./pos.inventory.service");
 
 class PosOrderService {
-    //===========================
-    // 1. CASHIER: tạo order
-    //===========================
+
+    // =======================================
+    // 1. CASHIER — LẤY LIST ORDER (pending, waiting)
+    // =======================================
+    static async getCashierOrders(user) {
+        const pool = await getPool();
+
+        // Lấy StoreId của cashier
+        const empRs = await pool.request()
+            .input("UserId", sql.Int, user.id)
+            .query(`
+                SELECT TOP 1 StoreId
+                FROM Employees
+                WHERE UserId = @UserId
+            `);
+
+        const storeId = empRs.recordset[0]?.StoreId;
+        if (!storeId) throw new Error("Cashier không thuộc chi nhánh nào");
+
+        // Lấy danh sách order pending/waiting
+        const rs = await pool.request()
+            .input("StoreId", sql.Int, storeId)
+            .query(`
+                SELECT 
+                    o.Id, o.UserId, o.StoreId,
+                    o.Total, o.Status, o.PaymentStatus,
+                    o.CreatedAt, u.Name AS CustomerName
+                FROM Orders o
+                LEFT JOIN Users u ON o.UserId = u.Id
+                WHERE o.StoreId = @StoreId
+                  AND o.Status IN ('pending', 'waiting')
+                ORDER BY o.CreatedAt DESC
+            `);
+
+        return rs.recordset;
+    }
+
+    // =======================================
+    // 2. CASHIER — Tạo order
+    // =======================================
     static async createOrder(payload, user) {
         const { items, voucherCode } = payload;
 
@@ -18,15 +55,14 @@ class PosOrderService {
         let subTotal = 0;
         for (const item of items) {
             if (!item.productId || !item.quantity || !item.price) {
-                throw new Error("Thiếu thông tin sản phẩm trong items");
+                throw new Error("Thiếu thông tin sản phẩm");
             }
             subTotal += Number(item.price) * Number(item.quantity);
         }
 
-        const discountAmount = 0;
-        const totalAmount = subTotal - discountAmount;
+        const totalAmount = subTotal;
 
-        // Lấy chi nhánh của nhân viên
+        // Lấy chi nhánh của cashier
         const empRs = await pool.request()
             .input("UserId", sql.Int, user.id)
             .query(`
@@ -69,34 +105,36 @@ class PosOrderService {
         return {
             message: "Tạo order thành công",
             orderId,
-            totalAmount,
+            totalAmount
         };
     }
 
-    //===========================
-    // 2. CASHIER gửi order sang barista
-    //===========================
+    // =======================================
+    // 3. CASHIER — Gửi order sang Barista
+    // =======================================
     static async sendToBarista(orderId) {
         const pool = await getPool();
 
         await pool.request()
             .input("OrderId", sql.Int, orderId)
             .query(`
-                UPDATE Orders SET Status = 'waiting'
+                UPDATE Orders 
+                SET Status = 'waiting'
                 WHERE Id = @OrderId
             `);
 
         return { message: "Đã gửi order sang Barista", orderId };
     }
 
-    //===========================
-    // 3. BARISTA xem hàng đợi
-    //===========================
+    // =======================================
+    // 4. BARISTA — Xem queue
+    // =======================================
     static async getBaristaQueue() {
         const pool = await getPool();
 
         const rs = await pool.request().query(`
-            SELECT *
+            SELECT 
+                Id, UserId, StoreId, Total, Status, PaymentStatus, CreatedAt
             FROM Orders
             WHERE Status IN ('waiting', 'preparing')
             ORDER BY CreatedAt ASC
@@ -105,14 +143,12 @@ class PosOrderService {
         return rs.recordset;
     }
 
-    //===========================
-    // 4. BARISTA cập nhật trạng thái
-    //===========================
+    // =======================================
+    // 5. BARISTA — Update status
+    // =======================================
     static async updateStatus(orderId, status) {
         const valid = ["preparing", "done"];
-        if (!valid.includes(status)) {
-            throw new Error("Trạng thái không hợp lệ");
-        }
+        if (!valid.includes(status)) throw new Error("Trạng thái không hợp lệ");
 
         const pool = await getPool();
 
@@ -128,13 +164,12 @@ class PosOrderService {
         return { message: "Cập nhật trạng thái thành công", orderId, status };
     }
 
-    //===========================
-    // 5. CASHIER thanh toán
-    //===========================
+    // =======================================
+    // 6. CASHIER — Thanh toán
+    // =======================================
     static async payOrder(orderId, paymentMethod, amountPaid, user) {
         const pool = await getPool();
 
-        // Lấy thông tin order
         const rs = await pool.request()
             .input("OrderId", sql.Int, orderId)
             .query(`
@@ -147,25 +182,16 @@ class PosOrderService {
         if (!order) throw new Error("Order không tồn tại");
 
         if (order.PaymentStatus === "paid") {
-            throw new Error("Order đã được thanh toán");
-        }
-
-        if (["canceled", "refunded"].includes(order.Status)) {
-            throw new Error("Order đã bị hủy/hoàn tiền, không thể thanh toán");
+            throw new Error("Order đã thanh toán");
         }
 
         const total = Number(order.Total);
         const paid = Number(amountPaid);
-        if (isNaN(paid)) {
-            throw new Error("Số tiền thanh toán không hợp lệ");
-        }
-        if (paid < total) {
-            throw new Error("Số tiền khách đưa nhỏ hơn tổng tiền");
-        }
+
+        if (paid < total) throw new Error("Khách đưa thiếu tiền");
 
         const change = paid - total;
 
-        // Update payment info
         await pool.request()
             .input("OrderId", sql.Int, orderId)
             .input("PaymentMethod", sql.NVarChar, paymentMethod || "cash")
@@ -177,11 +203,10 @@ class PosOrderService {
                 SET PaymentMethod = @PaymentMethod,
                     AmountPaid = @AmountPaid,
                     ChangeAmount = @ChangeAmount,
-                    PaymentStatus = @PaymentStatus
+                    PaymentStatus = 'paid'
                 WHERE Id = @OrderId
             `);
 
-        // 👇 TRỪ KHO SAU KHI THANH TOÁN
         await PosInventoryService.handleOrderPaid(orderId);
 
         return {
@@ -189,84 +214,9 @@ class PosOrderService {
             orderId,
             totalAmount: total,
             amountPaid: paid,
-            changeAmount: change,
-            paymentMethod,
+            changeAmount: change
         };
     }
-
-    static async cancelOrder(orderId, user) {
-        const pool = await getPool();
-
-        const rs = await pool.request()
-            .input("OrderId", sql.Int, orderId)
-            .query(`
-            SELECT Id, PaymentStatus, Status
-            FROM Orders
-            WHERE Id = @OrderId
-        `);
-
-        const order = rs.recordset[0];
-        if (!order) throw new Error("Order không tồn tại");
-
-        if (order.PaymentStatus === "paid") {
-            throw new Error("Order đã thanh toán — không thể cancel.");
-        }
-
-        if (!["pending", "waiting"].includes(order.Status)) {
-            throw new Error("Order đã vào barista hoặc hoàn tất — không thể cancel.");
-        }
-
-        await pool.request()
-            .input("OrderId", sql.Int, orderId)
-            .query(`
-            UPDATE Orders
-            SET Status = 'canceled'
-            WHERE Id = @OrderId
-        `);
-
-        return { message: "Đã hủy đơn hàng", orderId };
-    }
-
-    static async refundOrder(orderId, user) {
-        const pool = await getPool();
-
-        const rs = await pool.request()
-            .input("OrderId", sql.Int, orderId)
-            .query(`
-            SELECT Id, PaymentStatus, Status
-            FROM Orders
-            WHERE Id = @OrderId
-        `);
-
-        const order = rs.recordset[0];
-        if (!order) throw new Error("Order không tồn tại");
-
-        if (order.PaymentStatus !== "paid") {
-            throw new Error("Chỉ refund các order đã thanh toán.");
-        }
-
-        if (order.Status === "refunded") {
-            throw new Error("Order đã refund trước đó.");
-        }
-
-        // 1) HOÀN KHO TRƯỚC
-        const PosRefundService = require("./pos.refund.service");
-        await PosRefundService.refundOrder(orderId);
-
-        // 2) SAU ĐÓ MỚI CẬP NHẬT TRẠNG THÁI ĐƠN
-        await pool.request()
-            .input("OrderId", sql.Int, orderId)
-            .query(`
-            UPDATE Orders
-            SET Status = 'refunded',
-                PaymentStatus = 'refunded'
-            WHERE Id = @OrderId
-        `);
-
-        return { message: "Refund thành công", orderId };
-    }
-
-
 }
 
 module.exports = PosOrderService;
